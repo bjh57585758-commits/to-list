@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Habit Tracker</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root {
+    --bg: #f6f5fb;
+    --card: #ffffff;
+    --text: #2f2f3a;
+    --muted: #9a9aab;
+    --line: #ececf3;
+    --accent: #a78bfa;
+    --accent-soft: #ede9fe;
+    --done: #8bd3b0;
+    --sun: #f08a9b;
+    --sat: #7aa7e8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Pretendard', -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .app { width: 100%; max-width: 760px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  h1 { font-size: 1.5rem; font-weight: 700; }
+  .nav { display: flex; align-items: center; gap: 8px; }
+  .nav button {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    padding: 8px 14px; border-radius: 10px; font: inherit; font-size: .9rem; cursor: pointer;
+    transition: background .15s;
+  }
+  .nav button:hover { background: var(--accent-soft); }
+  .calendar {
+    background: var(--card); border-radius: 20px; padding: 16px;
+    box-shadow: 0 6px 24px rgba(120, 100, 180, .08);
+  }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .dow { text-align: center; font-size: .8rem; font-weight: 600; color: var(--muted); padding: 6px 0; }
+  .dow.sun { color: var(--sun); } .dow.sat { color: var(--sat); }
+  .cell {
+    aspect-ratio: 1 / 1.05; min-height: 56px;
+    border: 1px solid var(--line); border-radius: 12px; background: #fff;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 6px 4px; cursor: pointer; font: inherit; color: inherit;
+    transition: transform .1s, border-color .15s, background .15s;
+  }
+  .cell:hover { border-color: var(--accent); background: #faf8ff; }
+  .cell:active { transform: scale(.97); }
+  .cell.empty { visibility: hidden; }
+  .cell.today { border: 2px solid var(--accent); background: var(--accent-soft); }
+  .cell.full { background: #effaf4; border-color: var(--done); }
+  .num { font-size: .95rem; font-weight: 600; }
+  .cell.sun .num { color: var(--sun); } .cell.sat .num { color: var(--sat); }
+  .dots { display: flex; gap: 3px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  .dot.on { background: var(--done); }
+  .count { font-size: .65rem; color: var(--muted); }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(40, 35, 60, .35);
+    display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 20px; width: 100%; max-width: 380px; padding: 22px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.2);
+  }
+  .modal h2 { font-size: 1.1rem; margin-bottom: 4px; }
+  .progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0 14px; }
+  .progress > div { height: 100%; background: var(--done); width: 0; transition: width .25s; }
+  .item {
+    display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px;
+    cursor: pointer; user-select: none; transition: background .15s;
+  }
+  .item:hover { background: var(--accent-soft); }
+  .item input { width: 20px; height: 20px; accent-color: #6fc79c; cursor: pointer; }
+  .item.checked span { color: var(--muted); text-decoration: line-through; }
+  .close {
+    margin-top: 14px; width: 100%; border: 0; background: var(--accent); color: #fff;
+    padding: 12px; border-radius: 12px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  @media (max-width: 480px) {
+    .calendar { padding: 10px; } .grid { gap: 4px; }
+    .cell { min-height: 50px; padding: 4px 2px; } .dot { width: 5px; height: 5px; }
+    h1 { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="title"></h1>
+    <div class="nav">
+      <button id="prev">← 이전달</button>
+      <button id="next">다음달 →</button>
+    </div>
+  </header>
+  <div class="calendar"><div class="grid" id="grid"></div></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2 id="mTitle"></h2>
+    <div class="progress"><div id="bar"></div></div>
+    <div id="list"></div>
+    <button class="close" id="close">닫기</button>
+  </div>
+</div>
+
+<script>
+const ITEMS = ['07:00 기상하기', '물 1.5L 마시기', '30분 운동하기', '독서 20분 하기', '취침 전 일기 쓰기'];
+const KEY = 'habit-tracker-v1';
+const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+
+let data = {};
+try { data = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { data = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
+
+const now = new Date();
+let year = now.getFullYear(), month = now.getMonth(), selected = null;
+
+const pad = n => String(n).padStart(2, '0');
+const keyOf = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const states = k => (data[k] && data[k].length === 5) ? data[k] : [false, false, false, false, false];
+const countOf = k => states(k).filter(Boolean).length;
+
+const grid = document.getElementById('grid');
+
+function render() {
+  document.getElementById('title').textContent = `${year}년 ${month + 1}월`;
+  grid.innerHTML = '';
+  DOW.forEach((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'dow' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '');
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+  const first = new Date(year, month, 1).getDay();
+  const days = new Date(year, month + 1, 0).getDate();
+  const todayKey = keyOf(now.getFullYear(), now.getMonth(), now.getDate());
+  for (let i = 0; i < first; i++) {
+    const e = document.createElement('div'); e.className = 'cell empty'; grid.appendChild(e);
+  }
+  for (let d = 1; d <= days; d++) {
+    const k = keyOf(year, month, d), c = countOf(k), dow = (first + d - 1) % 7;
+    const b = document.createElement('button');
+    b.className = 'cell' + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '')
+      + (k === todayKey ? ' today' : '') + (c === 5 ? ' full' : '');
+    b.innerHTML = `<span class="num">${d}</span>
+      <span class="dots">${states(k).map(v => `<i class="dot${v ? ' on' : ''}"></i>`).join('')}</span>
+      <span class="count">${c}/5</span>`;
+    b.addEventListener('click', () => openModal(k));
+    grid.appendChild(b);
+  }
+}
+
+function openModal(k) {
+  selected = k;
+  const [y, m, d] = k.split('-').map(Number);
+  document.getElementById('mTitle').textContent = `${y}년 ${m}월 ${d}일 (${DOW[new Date(y, m - 1, d).getDay()]})`;
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  states(k).forEach((v, i) => {
+    const label = document.createElement('label');
+    label.className = 'item' + (v ? ' checked' : '');
+    label.innerHTML = `<input type="checkbox" ${v ? 'checked' : ''}><span>${ITEMS[i]}</span>`;
+    label.querySelector('input').addEventListener('change', e => {
+      const s = states(selected).slice();
+      s[i] = e.target.checked;
+      data[selected] = s;
+      save();
+      label.classList.toggle('checked', s[i]);
+      updateBar();
+      render();
+    });
+    list.appendChild(label);
+  });
+  updateBar();
+  document.getElementById('overlay').classList.add('open');
+}
+
+function updateBar() {
+  document.getElementById('bar').style.width = (countOf(selected) / 5 * 100) + '%';
+}
+
+function closeModal() { document.getElementById('overlay').classList.remove('open'); selected = null; }
+
+document.getElementById('close').onclick = closeModal;
+document.getElementById('overlay').addEventListener('click', e => { if (e.target.id === 'overlay') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.getElementById('prev').onclick = () => { if (--month < 0) { month = 11; year--; } render(); };
+document.getElementById('next').onclick = () => { if (++month > 11) { month = 0; year++; } render(); };
+
+render();
+</script>
+</body>
+</html>
